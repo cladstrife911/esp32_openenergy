@@ -1,10 +1,14 @@
-# WiFi station example
+# ESP32 EmonCMS Supplier
 
-(See the README.md file in the upper level 'examples' directory for more information about examples.)
-
+This application is based on following esp32 examples:
+* examples\wifi\getting_started\station
+* examples\protocols\esp_http_client
 
 ## How to use example
 
+UART TX pin if GPIO 4
+UART RX pin if GPIO 5
+baudrate: 115200
 ### Configure the project
 
 ```
@@ -12,7 +16,6 @@ idf.py menuconfig
 ```
 
 * Set serial port under Serial Flasher Options.
-
 * Set WiFi SSID and WiFi Password and Maximum retry under Example Configuration Options.
 
 ### Build and Flash
@@ -24,8 +27,6 @@ idf.py -p PORT flash monitor
 ```
 
 (To exit the serial monitor, type ``Ctrl-]``.)
-
-See the Getting Started Guide for full steps to configure and use ESP-IDF to build projects.
 
 ## Example Output
 
@@ -57,41 +58,4 @@ I (2067) wifi: pm start, type: 1
 
 I (3227) event: sta ip: 172.20.10.7, mask: 255.255.255.240, gw: 172.20.10.1
 I (3227) wifi station: got ip:172.20.10.7
-```
-
-There is the console output for station connects to ap failed:
-```
-I (728) wifi station: ESP_WIFI_MODE_STA
-I (728) wifi: wifi driver task: 3ffc0c68, prio:23, stack:3584, core=0
-I (728) wifi: wifi firmware version: 19b3110
-I (728) wifi: config NVS flash: enabled
-I (738) wifi: config nano formating: disabled
-I (738) system_api: Base MAC address is not set, read default base MAC address from BLK0 of EFUSE
-I (748) system_api: Base MAC address is not set, read default base MAC address from BLK0 of EFUSE
-I (778) wifi: Init dynamic tx buffer num: 32
-I (778) wifi: Init data frame dynamic rx buffer num: 32
-I (778) wifi: Init management frame dynamic rx buffer num: 32
-I (788) wifi: Init static rx buffer size: 1600
-I (788) wifi: Init static rx buffer num: 10
-I (788) wifi: Init dynamic rx buffer num: 32
-I (908) phy: phy_version: 3960, 5211945, Jul 18 2018, 10:40:07, 0, 0
-I (908) wifi: mode : sta (30:ae:a4:80:45:68)
-I (908) wifi station: wifi_init_sta finished.
-I (918) wifi station: connect to ap SSID:myssid password:mypassword
-I (3328) wifi station: retry to connect to the AP
-I (3328) wifi station: connect to the AP fail
-
-I (5738) wifi station: retry to connect to the AP
-I (5738) wifi station: connect to the AP fail
-
-I (8148) wifi station: retry to connect to the AP
-I (8148) wifi station: connect to the AP fail
-
-I (10558) wifi station: retry to connect to the AP
-I (10558) wifi station: connect to the AP fail
-
-I (12968) wifi station: retry to connect to the AP
-I (12968) wifi station: connect to the AP fail
-
-I (15378) wifi station: connect to the AP fail
 ```

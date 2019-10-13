@@ -16,6 +16,9 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 
+#include "driver/uart.h"
+#include "driver/gpio.h"
+
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
@@ -41,6 +44,7 @@
 static void periodic_timer_callback(void* arg);
 static void vidPostTest(void);
 static esp_err_t _http_event_handler(esp_http_client_event_t *evt);
+static void vidInitUart(void);
 
 /****************** local variables *****************/
 /* FreeRTOS event group to signal when we are connected*/
@@ -60,6 +64,25 @@ static const esp_timer_create_args_t periodic_timer_args = {
             .name = "periodic"
     };
 static esp_timer_handle_t periodic_timer;
+
+/*** UART params ***/
+#define UART_TXD  (GPIO_NUM_4)
+#define UART_RXD  (GPIO_NUM_5)
+const int uart_num = UART_NUM_1;
+uart_config_t uart_config = {
+    .baud_rate = 115200,
+    .data_bits = UART_DATA_8_BITS,
+    .parity = UART_PARITY_DISABLE,
+    .stop_bits = UART_STOP_BITS_1,
+    .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+    .rx_flow_ctrl_thresh = 122,
+};
+// Setup UART buffered IO with event queue
+const int uart_buffer_size = (1024 * 2);
+QueueHandle_t uart_queue;
+static char* test_str = "Echo\r\n";
+static uint8_t uart_in_data[128];
+static int uart_in_length = 0;
 
 /****************** local functions definitions *****************/
 
@@ -132,6 +155,9 @@ void app_main(void)
 
     ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
     wifi_init_sta();
+
+    vidInitUart();
+
 }
 
 /********************************/
@@ -141,7 +167,17 @@ static void periodic_timer_callback(void* arg)
     int64_t time_since_boot = esp_timer_get_time();
     ESP_LOGI(TAG, "Periodic timer called, time since boot: %lld us", time_since_boot);
 
+    // Loopback test - Write data to UART.
+    uart_write_bytes(uart_num, (const char*)test_str, strlen(test_str));
+
     vidPostTest();
+
+    // Read data from UART.
+    ESP_ERROR_CHECK(uart_get_buffered_data_len(uart_num, (size_t*)&uart_in_length));
+    uart_in_length = uart_read_bytes(uart_num, uart_in_data, uart_in_length, 100);
+    ESP_LOGI(TAG, "Uart RX size=%d", uart_in_length);
+    ESP_LOGI(TAG, "Uart RX data=%s", uart_in_data);
+    // uart_flush(uart_num);
 }
 
 
@@ -182,6 +218,16 @@ static void vidPostTest(void)
   esp_http_client_cleanup(client);
 }
 
+static void vidInitUart(void)
+{
+  // Configure UART parameters
+  ESP_ERROR_CHECK(uart_param_config(uart_num, &uart_config));
+  // Set UART pins(TX: IO16 (UART2 default), RX: IO17 (UART2 default), RTS: IO18, CTS: IO19)
+  ESP_ERROR_CHECK(uart_set_pin(uart_num, UART_TXD, UART_RXD, 18, 19));
+  // Install UART driver using an event queue here
+  ESP_ERROR_CHECK(uart_driver_install(uart_num, uart_buffer_size, \
+                                      uart_buffer_size, 10, &uart_queue, 0));
+}
 
 static esp_err_t _http_event_handler(esp_http_client_event_t *evt)
 {

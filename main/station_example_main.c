@@ -42,7 +42,7 @@
 
 /****************** local functions declarations *****************/
 static void periodic_timer_callback(void* arg);
-static void vidPostTest(void);
+static void vidPostTest(char* au8ValueToSend);
 static esp_err_t _http_event_handler(esp_http_client_event_t *evt);
 static void vidInitUart(void);
 
@@ -65,6 +65,14 @@ static const esp_timer_create_args_t periodic_timer_args = {
     };
 static esp_timer_handle_t periodic_timer;
 
+/*** HTTP params ***/
+static esp_http_client_config_t LOC_strHttpConfig = {
+    .url = "http://192.168.1.2/emoncms",
+    // .url = "http://192.168.1.2/emoncms/input/post?node=emontx&json={power1:100,power2:200,power3:300}",
+    .event_handler = _http_event_handler,
+};
+static esp_http_client_handle_t LOC_HttpClient;
+
 /*** UART params ***/
 #define UART_TXD  (GPIO_NUM_4)
 #define UART_RXD  (GPIO_NUM_5)
@@ -78,11 +86,13 @@ uart_config_t uart_config = {
     .rx_flow_ctrl_thresh = 122,
 };
 // Setup UART buffered IO with event queue
-const int uart_buffer_size = (1024 * 2);
+const int uart_buffer_size = (255);
 QueueHandle_t uart_queue;
-static char* test_str = "Echo\r\n";
-static uint8_t uart_in_data[128];
+// static char* test_str = "Echo\r\n";
+static uint8_t uart_in_data[255];
 static int uart_in_length = 0;
+
+static char buffer_util_data[128];
 
 /****************** local functions definitions *****************/
 
@@ -164,58 +174,76 @@ void app_main(void)
 
 static void periodic_timer_callback(void* arg)
 {
-    int64_t time_since_boot = esp_timer_get_time();
-    ESP_LOGI(TAG, "Periodic timer called, time since boot: %lld us", time_since_boot);
 
-    // Loopback test - Write data to UART.
-    uart_write_bytes(uart_num, (const char*)test_str, strlen(test_str));
 
-    vidPostTest();
+  int64_t time_since_boot = esp_timer_get_time();
+  ESP_LOGI(TAG, "Periodic timer called, time since boot: %lld us", time_since_boot);
 
-    // Read data from UART.
-    ESP_ERROR_CHECK(uart_get_buffered_data_len(uart_num, (size_t*)&uart_in_length));
-    uart_in_length = uart_read_bytes(uart_num, uart_in_data, uart_in_length, 100);
-    ESP_LOGI(TAG, "Uart RX size=%d", uart_in_length);
-    ESP_LOGI(TAG, "Uart RX data=%s", uart_in_data);
-    // uart_flush(uart_num);
+  // Loopback test - Write data to UART.
+  // uart_write_bytes(uart_num, (const char*)test_str, strlen(test_str));
+
+  // Read data from UART.
+  ESP_ERROR_CHECK(uart_get_buffered_data_len(uart_num, (size_t*)&uart_in_length));
+  uart_in_length = uart_read_bytes(uart_num, uart_in_data, uart_in_length, 0);
+  // ESP_LOGI(TAG, "Uart RX size=%d", uart_in_length);
+  // ESP_LOGI(TAG, "Uart RX data=%s", uart_in_data);
+
+  for(int i=0;i<uart_in_length; i++)
+  {
+    if(uart_in_data[i]=='\r')
+    {
+      memcpy(buffer_util_data,uart_in_data, i);
+      buffer_util_data[i]='\0'; /*end of string char*/
+      i=uart_in_length; /*Exit for loop*/
+    }
+  }
+  ESP_LOGI(TAG, "buffer_util_data=%s", buffer_util_data);
+
+  if(strlen(buffer_util_data) != 0){
+    vidPostTest(buffer_util_data);
+  }
+
+  uart_flush(uart_num);
 }
-
 
 /*
 * GET:  http://192.168.1.2/emoncms/input/post?node=emontx&fulljson={"power1":100,"power2":200,"power3":300}
 * POST:  curl --data "node=1&data={power1:100,power2:200,power3:300}&apikey=c2ab2cb10bbb69ff568cb4e8cf70c198" "http://192.168.1.2/emoncms/input/post"
 */
-static void vidPostTest(void)
+static void vidPostTest(char* au8ValueToSend)
 {
   esp_err_t err;
+  char post_data[POST_DATA_SIZE];
 
-  esp_http_client_config_t config = {
-      .url = "http://192.168.1.2/emoncms",
-      // .url = "http://192.168.1.2/emoncms/input/post?node=emontx&json={power1:100,power2:200,power3:300}",
-      .event_handler = _http_event_handler,
-  };
-  esp_http_client_handle_t client = esp_http_client_init(&config);
+  // sprintf(au8ValueToSend, "Irms1:10.0,Irms2:25.0");
+
+  LOC_HttpClient = esp_http_client_init(&LOC_strHttpConfig);
 
   /*** POST ***/
-  char post_data[POST_DATA_SIZE];
-  sprintf(post_data,
-          "node=esp32&data={power1:%d,power2:%d,power3:%d}&apikey=c2ab2cb10bbb69ff568cb4e8cf70c198",
-          esp_random()%10+10,
-          esp_random()%10+50,
-          esp_random()%10+100);
-  esp_http_client_set_url(client, "http://192.168.1.2/emoncms/input/post");
-  esp_http_client_set_method(client, HTTP_METHOD_POST);
-  esp_http_client_set_post_field(client, post_data, strlen(post_data));
-  err = esp_http_client_perform(client);
-  if (err == ESP_OK) {
-      ESP_LOGI(TAG, "HTTP POST Status = %d, content_length = %d",
-              esp_http_client_get_status_code(client),
-              esp_http_client_get_content_length(client));
-  } else {
-      ESP_LOGE(TAG, "HTTP POST request failed: %s", esp_err_to_name(err));
+  if(au8ValueToSend != NULL)
+  {
+    sprintf(post_data,
+            "node=esp32&data={%s}&apikey=c2ab2cb10bbb69ff568cb4e8cf70c198",
+            au8ValueToSend);
+    ESP_LOGI(TAG, "POST data:%s",post_data);
+    esp_http_client_set_url(LOC_HttpClient, "http://192.168.1.2/emoncms/input/post");
+    esp_http_client_set_method(LOC_HttpClient, HTTP_METHOD_POST);
+    esp_http_client_set_post_field(LOC_HttpClient, post_data, strlen(post_data));
+    err = esp_http_client_perform(LOC_HttpClient);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "HTTP POST Status = %d, content_length = %d",
+                esp_http_client_get_status_code(LOC_HttpClient),
+                esp_http_client_get_content_length(LOC_HttpClient));
+    } else {
+        ESP_LOGE(TAG, "HTTP POST request failed: %s", esp_err_to_name(err));
+    }
+  }
+  else{
+    ESP_LOGE(TAG, "input char is not valid");
   }
 
-  esp_http_client_cleanup(client);
+  /*Must be called in the same fct as esp_http_client_init*/
+  esp_http_client_cleanup(LOC_HttpClient);
 }
 
 static void vidInitUart(void)
@@ -256,8 +284,8 @@ static esp_err_t _http_event_handler(esp_http_client_event_t *evt)
             ESP_LOGD(TAG, "HTTP_EVENT_ON_FINISH");
             break;
         case HTTP_EVENT_DISCONNECTED:
-            ESP_LOGI(TAG, "HTTP_EVENT_DISCONNECTED");
-            int mbedtls_err = 0;
+            // ESP_LOGI(TAG, "HTTP_EVENT_DISCONNECTED");
+            // int mbedtls_err = 0;
             // esp_err_t err = esp_tls_get_and_clear_last_error(evt->data, &mbedtls_err, NULL);
             // if (err != 0) {
             //     ESP_LOGI(TAG, "Last esp error code: 0x%x", err);

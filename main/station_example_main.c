@@ -16,6 +16,8 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 
+#include "TicHandler.h"
+
 #include "driver/uart.h"
 #include "driver/gpio.h"
 
@@ -44,7 +46,6 @@
 static void periodic_timer_callback(void* arg);
 static void vidPostTest(char* au8ValueToSend);
 static esp_err_t _http_event_handler(esp_http_client_event_t *evt);
-static void vidInitUart(void);
 
 /****************** local variables *****************/
 /* FreeRTOS event group to signal when we are connected*/
@@ -54,7 +55,7 @@ static EventGroupHandle_t s_wifi_event_group;
  * - are we connected to the AP with an IP? */
 const int WIFI_CONNECTED_BIT = BIT0;
 
-static const char *TAG = "wifi station";
+static const char *TAG = "[Main]";
 
 static int s_retry_num = 0;
 
@@ -72,27 +73,6 @@ static esp_http_client_config_t LOC_strHttpConfig = {
     .event_handler = _http_event_handler,
 };
 static esp_http_client_handle_t LOC_HttpClient;
-
-/*** UART params ***/
-#define UART_TXD  (GPIO_NUM_4)
-#define UART_RXD  (GPIO_NUM_5)
-const int uart_num = UART_NUM_1;
-uart_config_t uart_config = {
-    .baud_rate = 115200,
-    .data_bits = UART_DATA_8_BITS,
-    .parity = UART_PARITY_DISABLE,
-    .stop_bits = UART_STOP_BITS_1,
-    .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-    .rx_flow_ctrl_thresh = 122,
-};
-// Setup UART buffered IO with event queue
-const int uart_buffer_size = (255);
-QueueHandle_t uart_queue;
-// static char* test_str = "Echo\r\n";
-static uint8_t uart_in_data[255];
-static int uart_in_length = 0;
-
-static char buffer_util_data[128];
 
 /****************** local functions definitions *****************/
 
@@ -166,7 +146,7 @@ void app_main(void)
     ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
     wifi_init_sta();
 
-    vidInitUart();
+    TicH_vidInit();
 
 }
 
@@ -174,36 +154,21 @@ void app_main(void)
 
 static void periodic_timer_callback(void* arg)
 {
+  tsrtTicInfo_t strTicInfo;
 
+  // int64_t time_since_boot = esp_timer_get_time();
+  // ESP_LOGI(TAG, "%lld - periodic_timer_callback()", time_since_boot);
+  ESP_LOGI(TAG, "#### periodic_timer_callback() ####");
 
-  int64_t time_since_boot = esp_timer_get_time();
-  ESP_LOGI(TAG, "Periodic timer called, time since boot: %lld us", time_since_boot);
+  TicH_vidPollInfo();
+  TicH_vidGetTicInfo(&strTicInfo);
 
-  // Loopback test - Write data to UART.
-  // uart_write_bytes(uart_num, (const char*)test_str, strlen(test_str));
+  ESP_LOGI(TAG, "\t - HCHC=%d", strTicInfo.HCHC);
+  ESP_LOGI(TAG, "\t - HCHP=%d", strTicInfo.HCHP);
+  ESP_LOGI(TAG, "\t - IINST=%d", strTicInfo.IINST);
+  ESP_LOGI(TAG, "\t - PAPP=%d", strTicInfo.PAPP);
+  ESP_LOGI(TAG, "\t - PTEC=%d", (int)strTicInfo.PTEC);
 
-  // Read data from UART.
-  ESP_ERROR_CHECK(uart_get_buffered_data_len(uart_num, (size_t*)&uart_in_length));
-  uart_in_length = uart_read_bytes(uart_num, uart_in_data, uart_in_length, 0);
-  // ESP_LOGI(TAG, "Uart RX size=%d", uart_in_length);
-  // ESP_LOGI(TAG, "Uart RX data=%s", uart_in_data);
-
-  for(int i=0;i<uart_in_length; i++)
-  {
-    if(uart_in_data[i]=='\r')
-    {
-      memcpy(buffer_util_data,uart_in_data, i);
-      buffer_util_data[i]='\0'; /*end of string char*/
-      i=uart_in_length; /*Exit for loop*/
-    }
-  }
-  ESP_LOGI(TAG, "buffer_util_data=%s", buffer_util_data);
-
-  if(strlen(buffer_util_data) != 0){
-    vidPostTest(buffer_util_data);
-  }
-
-  uart_flush(uart_num);
 }
 
 /*
@@ -244,17 +209,6 @@ static void vidPostTest(char* au8ValueToSend)
 
   /*Must be called in the same fct as esp_http_client_init*/
   esp_http_client_cleanup(LOC_HttpClient);
-}
-
-static void vidInitUart(void)
-{
-  // Configure UART parameters
-  ESP_ERROR_CHECK(uart_param_config(uart_num, &uart_config));
-  // Set UART pins(TX: IO16 (UART2 default), RX: IO17 (UART2 default), RTS: IO18, CTS: IO19)
-  ESP_ERROR_CHECK(uart_set_pin(uart_num, UART_TXD, UART_RXD, 18, 19));
-  // Install UART driver using an event queue here
-  ESP_ERROR_CHECK(uart_driver_install(uart_num, uart_buffer_size, \
-                                      uart_buffer_size, 10, &uart_queue, 0));
 }
 
 static esp_err_t _http_event_handler(esp_http_client_event_t *evt)

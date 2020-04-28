@@ -1,5 +1,4 @@
 
-#include "TicHandler.h"
 
 #include <string.h>
 #include "esp_system.h"
@@ -12,14 +11,26 @@
 
 #include "assert.h"
 
+#include "TicHandler.h"
 
 /***************** LOCAL MACRO *****************/
 #define UART_TXD  (GPIO_NUM_4)
 #define UART_RXD  (GPIO_NUM_5)
-#define UART_RX_BUFF_SIZE (255)
+#define UART_RX_BUFF_SIZE (512)
 
 #define ASCII_ETX (0x03)
 #define ASCII_STX (0x02)
+
+#define TIC_INFO_SIZE (180)
+
+/***************** LOCAL TYPE *****************/
+typedef enum
+{
+  enuStxNotFound, /*start of text*/
+  enuStxFound,
+  enuEtxFound, /*end of text*/
+  enuError,
+}tenuUartState;
 
 /***************** LOCAL FUNCTION *****************/
 static void vidInitUart(void);
@@ -50,7 +61,7 @@ static uint8_t LOC_au8UartRxBuff[UART_RX_BUFF_SIZE];
 static int LOC_iUartRxLen = 0;
 
 
-static char buffer_util_data[128];
+static char buffer_util_data[180];
 
 
 void TicH_vidInit(void)
@@ -59,38 +70,82 @@ void TicH_vidInit(void)
   vidInitUart();
 }
 
+/**
+* @brief This function shall be called periodicaly (independent from the periodicity)
+* to check the content of the UART RX buffer
+* @note call TicH_vidInit before
+*/
 void TicH_vidPollInfo(void)
 {
-  // Loopback test - Write data to UART.
-  // uart_write_bytes(uart_num, (const char*)test_str, strlen(test_str));
+  static tenuUartState enuUartState = enuStxNotFound;
+  static int byteCounter = 0;
 
   // Read data from UART.
   ESP_ERROR_CHECK(uart_get_buffered_data_len(uart_num, (size_t*)&LOC_iUartRxLen));
-  LOC_iUartRxLen = uart_read_bytes(uart_num, LOC_au8UartRxBuff, LOC_iUartRxLen, 0);
-  // ESP_LOGI(TAG, "Uart RX size=%d", LOC_iUartRxLen);
-  // ESP_LOGI(TAG, "Uart RX data=%s", LOC_au8UartRxBuff);
-
-  for(int i=0;i<LOC_iUartRxLen; i++)
+  ESP_LOGI(TAG, "Uart RX size=%d", LOC_iUartRxLen);
+  if(LOC_iUartRxLen>=TIC_INFO_SIZE)
   {
-    if(LOC_au8UartRxBuff[i]==ASCII_ETX)
+    LOC_iUartRxLen = uart_read_bytes(uart_num, LOC_au8UartRxBuff, LOC_iUartRxLen, 0);
+
+    for(int i=0;i<LOC_iUartRxLen; i++)
     {
-      memcpy(buffer_util_data,LOC_au8UartRxBuff, i);
-      buffer_util_data[i]='\0'; /*end of string char*/
-      i=LOC_iUartRxLen; /*Exit for loop*/
+      switch(enuUartState){
+        case enuStxNotFound:
+          if(LOC_au8UartRxBuff[i]==ASCII_STX)
+          {
+            enuUartState = enuStxFound;
+            byteCounter = 0;
+          }else{
+            //continue to search STX char
+          }
+        break;
+
+        case enuStxFound:
+          //check for end of text
+          if(LOC_au8UartRxBuff[i]==ASCII_ETX)
+          {
+            buffer_util_data[byteCounter] = '\0';
+            enuUartState = enuEtxFound;
+            byteCounter = 0;
+            i=LOC_iUartRxLen; /*Exit for loop*/
+          }else{
+            //continue to store the data
+            buffer_util_data[byteCounter] = LOC_au8UartRxBuff[i];
+            byteCounter++;
+            if(byteCounter>=TIC_INFO_SIZE){
+              enuUartState = enuError;
+            }
+          }
+        break;
+
+        case enuEtxFound:
+        case enuError:
+        default:
+          enuUartState = enuStxNotFound;
+        break;
+      }
+
     }
+
+    //Only analyze the received bytes if the frame is complete
+    if(enuUartState == enuEtxFound){
+      // ESP_LOGI(TAG, "UART TIC Info raw=%s", buffer_util_data);
+      vidParseUartInfo(buffer_util_data, &LOC_strTicInfo);
+      LOC_strTicInfo.bUpdatedVal = true;
+      LOC_strTicInfo.i64TimeLastUpdate = esp_timer_get_time();
+      uart_flush(uart_num);
+    }
+  }else{
+    LOC_strTicInfo.bUpdatedVal = false;
   }
-
-  vidParseUartInfo(buffer_util_data, &LOC_strTicInfo);
-
-  ESP_LOGI(TAG, "buffer_util_data=%s", buffer_util_data);
-
-  if(strlen(buffer_util_data) != 0){
-    // vidPostTest(buffer_util_data);
-  }
-
-  uart_flush(uart_num);
 }
 
+/**
+* @brief This function will return the current values
+* if the application is polling at higher speed than refresh, the old
+* value will be sent again
+* @note call TicH_vidInit & TicH_vidPollInfo before
+*/
 void TicH_vidGetTicInfo(tsrtTicInfo_t *pstrTicInfo)
 {
   assert(pstrTicInfo!=NULL);
@@ -195,6 +250,7 @@ static void vidInitLocalVar(void)
 {
   memset(&LOC_au8UartRxBuff, 0, sizeof(LOC_au8UartRxBuff));
   memset(&LOC_strTicInfo, 0, sizeof(LOC_strTicInfo));
+  LOC_strTicInfo.bUpdatedVal = false;
 }
 
 static void vidInitUart(void)

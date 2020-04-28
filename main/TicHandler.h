@@ -15,6 +15,10 @@ typedef struct
   tenuTicPeriodeTarifaire PTEC;//Période Tarifaire en cours
   int IINST;//Intensité Instantanée 3 char in A
   int PAPP;//Puissance apparente 5 char in VA
+
+  //True if value have been updated between 2 call of TicH_vidPollInfo
+  bool bUpdatedVal;
+  int64_t i64TimeLastUpdate;
 }tsrtTicInfo_t;
 
 extern void TicH_vidInit(void);

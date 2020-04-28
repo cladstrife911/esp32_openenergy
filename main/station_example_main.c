@@ -7,6 +7,7 @@
    CONDITIONS OF ANY KIND, either express or implied.
 */
 #include <string.h>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
@@ -38,7 +39,7 @@
 
 /*1s timeout*/
 #define MICROSEC_TO_SEC (1000000)
-#define u64TIMER_TIMEOUT_SECONDS (5*MICROSEC_TO_SEC)
+#define u64TIMER_TIMEOUT_SECONDS (1*MICROSEC_TO_SEC)
 
 #define POST_DATA_SIZE 256
 
@@ -130,7 +131,7 @@ void wifi_init_sta(void)
 	/* Create the periodic timer */
 	ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, &periodic_timer));
 	/* Start the timer */
-    ESP_ERROR_CHECK(esp_timer_start_periodic(periodic_timer, u64TIMER_TIMEOUT_SECONDS));
+  ESP_ERROR_CHECK(esp_timer_start_periodic(periodic_timer, u64TIMER_TIMEOUT_SECONDS));
 }
 
 void app_main(void)
@@ -163,11 +164,13 @@ static void periodic_timer_callback(void* arg)
   TicH_vidPollInfo();
   TicH_vidGetTicInfo(&strTicInfo);
 
-  ESP_LOGI(TAG, "\t - HCHC=%d", strTicInfo.HCHC);
-  ESP_LOGI(TAG, "\t - HCHP=%d", strTicInfo.HCHP);
-  ESP_LOGI(TAG, "\t - IINST=%d", strTicInfo.IINST);
-  ESP_LOGI(TAG, "\t - PAPP=%d", strTicInfo.PAPP);
-  ESP_LOGI(TAG, "\t - PTEC=%d", (int)strTicInfo.PTEC);
+  if(strTicInfo.bUpdatedVal){
+    ESP_LOGI(TAG, "\t - HCHC=%d", strTicInfo.HCHC);
+    ESP_LOGI(TAG, "\t - HCHP=%d", strTicInfo.HCHP);
+    ESP_LOGI(TAG, "\t - IINST=%d", strTicInfo.IINST);
+    ESP_LOGI(TAG, "\t - PAPP=%d", strTicInfo.PAPP);
+    ESP_LOGI(TAG, "\t - PTEC=%d", (int)strTicInfo.PTEC);
+  }
 
 }
 

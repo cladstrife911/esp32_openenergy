@@ -2,8 +2,6 @@
 
 #include <string.h>
 #include "esp_system.h"
-#include "esp_wifi.h"
-#include "esp_event.h"
 #include "esp_log.h"
 
 #include "driver/uart.h"
@@ -82,7 +80,7 @@ void TicH_vidPollInfo(void)
 
   // Read data from UART.
   ESP_ERROR_CHECK(uart_get_buffered_data_len(uart_num, (size_t*)&LOC_iUartRxLen));
-  ESP_LOGI(TAG, "Uart RX size=%d", LOC_iUartRxLen);
+  // ESP_LOGI(TAG, "Uart RX size=%d", LOC_iUartRxLen);
   if(LOC_iUartRxLen>=TIC_INFO_SIZE)
   {
     LOC_iUartRxLen = uart_read_bytes(uart_num, LOC_au8UartRxBuff, LOC_iUartRxLen, 0);
@@ -130,6 +128,7 @@ void TicH_vidPollInfo(void)
     //Only analyze the received bytes if the frame is complete
     if(enuUartState == enuEtxFound){
       // ESP_LOGI(TAG, "UART TIC Info raw=%s", buffer_util_data);
+      ESP_LOGI(TAG, "Valid data received on UART");
       vidParseUartInfo(buffer_util_data, &LOC_strTicInfo);
       LOC_strTicInfo.bUpdatedVal = true;
       LOC_strTicInfo.i64TimeLastUpdate = esp_timer_get_time();

@@ -3,6 +3,6 @@
 
 
 #define USE_EMON_CMS (0)
-#define USE_MQQT_CLIENT (1)
+#define USE_MQTT_CLIENT (1)
 
 #endif

@@ -21,6 +21,12 @@
 #include "EmonClient.h"
 #include "MqttSub.h"
 
+
+#include "ssd1306.h"
+#include "ssd1306_draw.h"
+#include "ssd1306_font.h"
+#include "ssd1306_default_if.h"
+
 #include "MainApplication_cfg.h"
 
 #include "lwip/err.h"
@@ -43,6 +49,17 @@
 //+20dBm
 #define MAX_TX_POWER (82)
 
+#define USE_I2C_DISPLAY
+
+#if defined USE_I2C_DISPLAY
+    static const int I2CDisplayAddress = 0x3C;
+    static const int I2CDisplayWidth = 128;
+    static const int I2CDisplayHeight = 32;
+    static const int I2CResetPin = -1;
+
+    struct SSD1306_Device I2CDisplay;
+#endif
+
 /****************** local type *****************/
 typedef enum
 {
@@ -53,6 +70,9 @@ typedef enum
 /****************** local functions declarations *****************/
 static void periodic_timer_callback(void* arg);
 static void vidInitLocalVar(void);
+static bool DefaultBusInit( void );
+static void SetupDemo( struct SSD1306_Device* DisplayHandle, const struct SSD1306_FontDef* Font );
+static void SayHello( struct SSD1306_Device* DisplayHandle, const char* HelloText );
 
 /****************** local variables *****************/
 /* FreeRTOS event group to signal when we are connected*/
@@ -162,6 +182,18 @@ void app_main(void)
   /* Start the timer */
   ESP_ERROR_CHECK(esp_timer_start_periodic(periodic_timer, u64TIMER_TIMEOUT_SECONDS));
 
+  if ( DefaultBusInit( ) == true ) {
+      printf( "BUS Init looking good...\n" );
+      printf( "Drawing.\n" );
+
+      #if defined USE_I2C_DISPLAY
+          SetupDemo( &I2CDisplay, &Font_droid_sans_fallback_24x28 );
+          SayHello( &I2CDisplay, "Hello i2c!" );
+      #endif
+
+      printf( "Done!\n" );
+  }
+
 }
 
 static void vidInitLocalVar(void)
@@ -217,4 +249,25 @@ static void periodic_timer_callback(void* arg)
   EmonClient_vidTest();
 #endif
 
+}
+
+
+static bool DefaultBusInit( void ) {
+    #if defined USE_I2C_DISPLAY
+        assert( SSD1306_I2CMasterInitDefault( ) == true );
+        assert( SSD1306_I2CMasterAttachDisplayDefault( &I2CDisplay, I2CDisplayWidth, I2CDisplayHeight, I2CDisplayAddress, I2CResetPin ) == true );
+    #endif
+
+    return true;
+}
+
+
+static void SetupDemo( struct SSD1306_Device* DisplayHandle, const struct SSD1306_FontDef* Font ) {
+    SSD1306_Clear( DisplayHandle, SSD_COLOR_BLACK );
+    SSD1306_SetFont( DisplayHandle, Font );
+}
+
+static void SayHello( struct SSD1306_Device* DisplayHandle, const char* HelloText ) {
+    SSD1306_FontDrawAnchoredString( DisplayHandle, TextAnchor_Center, HelloText, SSD_COLOR_WHITE );
+    SSD1306_Update( DisplayHandle );
 }

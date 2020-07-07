@@ -81,17 +81,23 @@ void MqttSub_vidSetTicInfo(tstrMqttSub_TicTopicsValue *pstrTicInfo)
     esp_mqtt_client_reconnect(LOC_strMqttClientHandle);
   }
 
-  sprintf(acTxBuffer, "%d",pstrTicInfo->HCHC);
-  msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/HCHC", acTxBuffer, expected_size, qos_test, 0);
-  sprintf(acTxBuffer, "%d",pstrTicInfo->HCHP);
-  msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/HCHP", acTxBuffer, expected_size, qos_test, 0);
-  sprintf(acTxBuffer, "%d",pstrTicInfo->IINST);
-  msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/IINST", acTxBuffer, expected_size, qos_test, 0);
-  msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "emon/emonpi/power1", acTxBuffer, expected_size, qos_test, 0);
-  sprintf(acTxBuffer, "%d",pstrTicInfo->PTEC);
-  msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/PTEC", acTxBuffer, expected_size, qos_test, 0);
-  sprintf(acTxBuffer, "%d",pstrTicInfo->PAPP);
-  msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/PAPP", acTxBuffer, expected_size, qos_test, 0);
+  //only send the data when there is no error
+  if(pstrTicInfo->error == enu_NoError)
+  {
+    sprintf(acTxBuffer, "%d",pstrTicInfo->HCHC);
+    msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/HCHC", acTxBuffer, expected_size, qos_test, 0);
+    sprintf(acTxBuffer, "%d",pstrTicInfo->HCHP);
+    msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/HCHP", acTxBuffer, expected_size, qos_test, 0);
+    sprintf(acTxBuffer, "%d",pstrTicInfo->IINST);
+    msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/IINST", acTxBuffer, expected_size, qos_test, 0);
+    sprintf(acTxBuffer, "%d",pstrTicInfo->PTEC);
+    msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/PTEC", acTxBuffer, expected_size, qos_test, 0);
+    sprintf(acTxBuffer, "%d",pstrTicInfo->PAPP);
+    msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/PAPP", acTxBuffer, expected_size, qos_test, 0);
+  }
+  //in any case, always send error info
+  sprintf(acTxBuffer, "%d",pstrTicInfo->error);
+  msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/error", acTxBuffer, expected_size, qos_test, 0);
 
   if(msg_id != 0)
   {

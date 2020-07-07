@@ -38,7 +38,10 @@
 
 /*1s timeout*/
 #define MICROSEC_TO_SEC (1000000)
-#define u64TIMER_TIMEOUT_SECONDS (1*MICROSEC_TO_SEC)
+#define u64TIMER_TIMEOUT_SECONDS (5*MICROSEC_TO_SEC)
+
+//+20dBm
+#define MAX_TX_POWER (82)
 
 /****************** local type *****************/
 typedef enum
@@ -122,6 +125,7 @@ void wifi_init_sta(void)
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config) );
     ESP_ERROR_CHECK(esp_wifi_start() );
+    ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(MAX_TX_POWER) );
 
     ESP_LOGI(TAG, "wifi_init_sta finished.");
     ESP_LOGI(TAG, "connect to ap SSID:%s password:%s",
@@ -179,7 +183,8 @@ static void periodic_timer_callback(void* arg)
   TicH_vidPollInfo();
   TicH_vidGetTicInfo(&strTicInfo);
 
-  if(strTicInfo.bUpdatedVal){
+  if(strTicInfo.bUpdatedVal)
+  {
     ESP_LOGI(TAG, "\t - HCHC=%d", strTicInfo.HCHC);
     ESP_LOGI(TAG, "\t - HCHP=%d", strTicInfo.HCHP);
     ESP_LOGI(TAG, "\t - IINST=%d", strTicInfo.IINST);
@@ -189,6 +194,7 @@ static void periodic_timer_callback(void* arg)
 #if (defined(USE_MQTT_CLIENT)&& (USE_MQTT_CLIENT==1))
     if(LOC_enuConnState == enuConnected){
       // MqttSub_vidTest(strTicInfo.IINST);
+      strTicTopic.error = enu_NoError;
       strTicTopic.HCHC = strTicInfo.HCHC;
       strTicTopic.HCHP = strTicInfo.HCHP;
       strTicTopic.IINST = strTicInfo.IINST;
@@ -197,7 +203,14 @@ static void periodic_timer_callback(void* arg)
       MqttSub_vidSetTicInfo(&strTicTopic);
     }
 #endif
-
+  }else
+  {
+      if(LOC_enuConnState == enuConnected){
+        strTicTopic.error = enu_NoTicInfo;
+        #if (defined(USE_MQTT_CLIENT)&& (USE_MQTT_CLIENT==1))
+        MqttSub_vidSetTicInfo(&strTicTopic);
+        #endif
+      }
   }
 
 #if (defined(USE_EMON_CMS)&& (USE_EMON_CMS==1))

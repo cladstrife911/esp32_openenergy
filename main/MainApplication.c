@@ -20,12 +20,7 @@
 #include "TicHandler.h"
 #include "EmonClient.h"
 #include "MqttSub.h"
-
-
-#include "ssd1306.h"
-#include "ssd1306_draw.h"
-#include "ssd1306_font.h"
-#include "ssd1306_default_if.h"
+#include "ScreenManager.h"
 
 #include "MainApplication_cfg.h"
 
@@ -44,21 +39,14 @@
 
 /*1s timeout*/
 #define MICROSEC_TO_SEC (1000000)
-#define u64TIMER_TIMEOUT_SECONDS (5*MICROSEC_TO_SEC)
+#define u64TIMER_TIMEOUT_SECONDS 100/*(5*MICROSEC_TO_SEC)*/
 
 //+20dBm
 #define MAX_TX_POWER (82)
 
-#define USE_I2C_DISPLAY
-
-#if defined USE_I2C_DISPLAY
-    static const int I2CDisplayAddress = 0x3C;
-    static const int I2CDisplayWidth = 128;
-    static const int I2CDisplayHeight = 32;
-    static const int I2CResetPin = -1;
-
-    struct SSD1306_Device I2CDisplay;
-#endif
+// #if (defined(USE_OLED_SCREEN)&& (USE_OLED_SCREEN==0))
+//   #define ScreenMgr_vidPrintNetworkStatus(fx) ((void)0)
+// #endif
 
 /****************** local type *****************/
 typedef enum
@@ -70,9 +58,6 @@ typedef enum
 /****************** local functions declarations *****************/
 static void periodic_timer_callback(void* arg);
 static void vidInitLocalVar(void);
-static bool DefaultBusInit( void );
-static void SetupDemo( struct SSD1306_Device* DisplayHandle, const struct SSD1306_FontDef* Font );
-static void SayHello( struct SSD1306_Device* DisplayHandle, const char* HelloText );
 
 /****************** local variables *****************/
 /* FreeRTOS event group to signal when we are connected*/
@@ -104,6 +89,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         LOC_enuConnState = enuDisconnected;
+        ScreenMgr_vidPrintNetworkStatus(false);
         if (s_retry_num < EXAMPLE_ESP_MAXIMUM_RETRY) {
             esp_wifi_connect();
             xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
@@ -113,6 +99,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         ESP_LOGI(TAG,"connect to the AP fail");
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_CONNECTED){
       LOC_enuConnState = enuConnected;
+      ScreenMgr_vidPrintNetworkStatus(true);
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "got ip:%s",
@@ -176,24 +163,15 @@ void app_main(void)
   #if (defined(USE_MQTT_CLIENT)&& (USE_MQTT_CLIENT==1))
   MqttSub_vidInit();
   #endif
+  #if (defined(USE_OLED_SCREEN)&& (USE_OLED_SCREEN==1))
+  ScreenMgr_vidInit();
+  ScreenMgr_vidPrintNetworkStatus(false);
+  #endif
 
   /* Create the periodic timer */
   ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, &periodic_timer));
   /* Start the timer */
   ESP_ERROR_CHECK(esp_timer_start_periodic(periodic_timer, u64TIMER_TIMEOUT_SECONDS));
-
-  if ( DefaultBusInit( ) == true ) {
-      printf( "BUS Init looking good...\n" );
-      printf( "Drawing.\n" );
-
-      #if defined USE_I2C_DISPLAY
-          SetupDemo( &I2CDisplay, &Font_droid_sans_fallback_24x28 );
-          SayHello( &I2CDisplay, "Hello i2c!" );
-      #endif
-
-      printf( "Done!\n" );
-  }
-
 }
 
 static void vidInitLocalVar(void)
@@ -249,25 +227,7 @@ static void periodic_timer_callback(void* arg)
   EmonClient_vidTest();
 #endif
 
-}
-
-
-static bool DefaultBusInit( void ) {
-    #if defined USE_I2C_DISPLAY
-        assert( SSD1306_I2CMasterInitDefault( ) == true );
-        assert( SSD1306_I2CMasterAttachDisplayDefault( &I2CDisplay, I2CDisplayWidth, I2CDisplayHeight, I2CDisplayAddress, I2CResetPin ) == true );
-    #endif
-
-    return true;
-}
-
-
-static void SetupDemo( struct SSD1306_Device* DisplayHandle, const struct SSD1306_FontDef* Font ) {
-    SSD1306_Clear( DisplayHandle, SSD_COLOR_BLACK );
-    SSD1306_SetFont( DisplayHandle, Font );
-}
-
-static void SayHello( struct SSD1306_Device* DisplayHandle, const char* HelloText ) {
-    SSD1306_FontDrawAnchoredString( DisplayHandle, TextAnchor_Center, HelloText, SSD_COLOR_WHITE );
-    SSD1306_Update( DisplayHandle );
+#if (defined(USE_OLED_SCREEN)&& (USE_OLED_SCREEN==1))
+  ScreenMgr_vidTest();
+#endif
 }

@@ -4,6 +4,10 @@
 #include "esp_system.h"
 #include "esp_log.h"
 
+// #include "freertos/FreeRTOS.h"
+// #include "freertos/task.h"
+#include "rom/ets_sys.h"
+
 #include "assert.h"
 
 #include "ScreenManager.h"
@@ -26,6 +30,13 @@
     static struct SSD1306_Device I2CDisplay;
 #endif
 
+#define PROGRESS_BAX_MAX_WIDTH 90
+#define PROGRESS_BAX_MAX_HEIGHT 15
+#define PROGRESS_BAX_MAX_VALUE 6000
+
+
+#define TASK_DELAY (200*1000)
+
 /***************** LOCAL TYPES *****************/
 
 /***************** LOCAL FUNCTIONS *****************/
@@ -35,7 +46,6 @@ static bool DefaultBusInit( void );
 static void SetupDemo( struct SSD1306_Device* DisplayHandle, const struct SSD1306_FontDef* Font );
 static void SayHello( struct SSD1306_Device* DisplayHandle, const char* HelloText );
 static void vidTestScreen(struct SSD1306_Device* DisplayHandle);
-static void ScreenMgr_vidPrintNumber(int number);
 static void vidClearLocalizedText(struct SSD1306_Device* DisplayHandle, TextAnchor Anchor, const char* Text);
 
 /***************** LOCAL VAR *****************/
@@ -53,13 +63,11 @@ void ScreenMgr_vidInit(void)
 
       #if defined USE_I2C_DISPLAY
           SetupDemo( &I2CDisplay, &Font_droid_sans_mono_7x13 );
-          SayHello( &I2CDisplay, "Hello i2c!" );
+          // SayHello( &I2CDisplay, "Hello i2c!" );
       #endif
 
-      // while(1){
-      //   vTaskDelay(100);
-      //   vidTestScreen(&I2CDisplay);
-      // }
+      vidTestScreen(&I2CDisplay);
+
       printf( "Done!\n" );
   }
 
@@ -67,32 +75,73 @@ void ScreenMgr_vidInit(void)
 
 void ScreenMgr_vidTest(void)
 {
-  static int i =0;
-  ScreenMgr_vidPrintNumber(i++%150);
+  static int i = 0;
+
+  i+=PROGRESS_BAX_MAX_VALUE/200;
+
+  ScreenMgr_vidPrintNumber(i++);
+
+  if(PROGRESS_BAX_MAX_VALUE/4 <= i){
+    ScreenMgr_vidPrintHPHC(true);
+  }else if(PROGRESS_BAX_MAX_VALUE/2 >= i){
+    ScreenMgr_vidPrintHPHC(false);
+  }
+
+  if(i>=PROGRESS_BAX_MAX_VALUE)
+    i=0;
 }
 
+/* Print the apparent power "PAPP" along with a load bar
+* \param number from 0 to 6KW, -1 when error*/
 void ScreenMgr_vidPrintNumber(int number)
 {
-  // int x = 0;
-  // int y = 0;
-
-  char pStringToSend[10];
+  char pStringToSend[5];
   char *pMaxStringToSend="9999";
-  sprintf(pStringToSend, "%d", number);
+  if(number > PROGRESS_BAX_MAX_VALUE){
+    number = PROGRESS_BAX_MAX_VALUE;
+  }
 
   /*need to clear the max size len to avoid the msb to remain on the screen while not used*/
   vidClearLocalizedText(&I2CDisplay, TextAnchor_NorthEast, pMaxStringToSend);
+
+  if(-1!=number)
+  {
+    sprintf(pStringToSend, "%d", number);
+  }else{
+    sprintf(pStringToSend, "ERR");
+  }
+
   SSD1306_FontDrawAnchoredString( &I2CDisplay, TextAnchor_NorthEast, pStringToSend, SSD_COLOR_WHITE );
+
+  /*draw a "load bar" on top left to represent the PAPP*/
+  /*first the border*/
+  SSD1306_DrawBox(&I2CDisplay,0 ,0 ,PROGRESS_BAX_MAX_WIDTH  ,PROGRESS_BAX_MAX_HEIGHT , SSD_COLOR_WHITE, false);
+  /*then the content*/
+  if(-1==number)
+  {
+    number=0;
+  }
+    /*the active part*/
+  SSD1306_DrawBox(&I2CDisplay,1 ,\
+                              1 ,\
+                              ((int)number*(PROGRESS_BAX_MAX_WIDTH-1)/PROGRESS_BAX_MAX_VALUE),\
+                              PROGRESS_BAX_MAX_HEIGHT-1 , \
+                              SSD_COLOR_WHITE,\
+                              true);
+    /*the inactive part*/
+  SSD1306_DrawBox(&I2CDisplay,1+((int)number*(PROGRESS_BAX_MAX_WIDTH-1)/PROGRESS_BAX_MAX_VALUE),\
+                              1 ,\
+                              PROGRESS_BAX_MAX_WIDTH-1,\
+                              PROGRESS_BAX_MAX_HEIGHT-1,\
+                              SSD_COLOR_BLACK,\
+                              true);
+
   SSD1306_Update( &I2CDisplay );
 }
 
 void ScreenMgr_vidPrintNetworkStatus(bool bNetworkStatus)
 {
-  // int x = 0;
-  // int y = 0;
-
-  char pStringToSend[10];
-
+  char pStringToSend[8];
 
   if(bNetworkStatus){
     sprintf(pStringToSend, "Wifi OK");
@@ -100,18 +149,37 @@ void ScreenMgr_vidPrintNetworkStatus(bool bNetworkStatus)
     sprintf(pStringToSend, "Wifi KO");
   }
 
-  //only refresh the screen where the number is supposed to be
-  // SSD1306_FontGetAnchoredStringCoords( &I2CDisplay, &x, &y, TextAnchor_SouthEast, pStringToSend);
-  // y = SSD1306_FontGetCharHeight( &I2CDisplay );
-
-  // printf("x=%d, y=%d", x, y);
-  // SSD1306_DrawBox(&I2CDisplay,x ,I2CDisplay.Height-y ,I2CDisplay.Width ,I2CDisplay.Height , SSD_COLOR_BLACK, true);
   vidClearLocalizedText(&I2CDisplay, TextAnchor_SouthEast, pStringToSend);
-
   SSD1306_FontDrawAnchoredString( &I2CDisplay, TextAnchor_SouthEast, pStringToSend, SSD_COLOR_WHITE );
   SSD1306_Update( &I2CDisplay );
 }
 
+void ScreenMgr_vidPrintNetworkIP(char *ipAddr)
+{
+  char *pMaxStringToSend="255.255.255.255";
+  vidClearLocalizedText(&I2CDisplay, TextAnchor_NorthWest, pMaxStringToSend);
+  SSD1306_FontDrawAnchoredString( &I2CDisplay, TextAnchor_NorthWest, ipAddr, SSD_COLOR_WHITE );
+  SSD1306_Update( &I2CDisplay );
+}
+
+/*Print HP (Heures Pleines) or HC (Heures creuses) on bottom left
+* \param bIsHp to true when in HP, false for HC
+*/
+void ScreenMgr_vidPrintHPHC(bool bIsHp)
+{
+  char pStringToSend[3];
+
+  if(bIsHp)
+  {
+    sprintf(pStringToSend, "HP");
+  }else{
+    sprintf(pStringToSend, "HC");
+  }
+
+  vidClearLocalizedText(&I2CDisplay, TextAnchor_SouthWest, pStringToSend);
+  SSD1306_FontDrawAnchoredString( &I2CDisplay, TextAnchor_SouthWest, pStringToSend, SSD_COLOR_WHITE );
+  SSD1306_Update( &I2CDisplay );
+}
 
 /***************** LOCAL FUNCTIONS *****************/
 static void vidInitLocalVar(void)
@@ -125,17 +193,29 @@ static void vidClearLocalizedText(struct SSD1306_Device* DisplayHandle, TextAnch
   int x1, x2 = 0;
   int y1, y2 = 0;
   SSD1306_FontGetAnchoredStringCoords( DisplayHandle, &x1, &y1, Anchor, Text);
-  y2 = SSD1306_FontGetCharHeight( DisplayHandle );
+  y2 = SSD1306_FontGetCharHeight(DisplayHandle);
+  x2 = SSD1306_FontGetCharWidth(DisplayHandle, Text);
 
   switch(Anchor)
   {
+    case TextAnchor_SouthWest:
+    {
+        // printf("%d, %d, %d, %d\r\n", x1, y1, x2, y2);
+        SSD1306_DrawBox(DisplayHandle,0 , DisplayHandle->Height-y2-1 , x2*2  , DisplayHandle->Height-1 , SSD_COLOR_BLACK, true);
+    }break;
+
+    case TextAnchor_NorthWest:
+    {
+        SSD1306_DrawBox(DisplayHandle,0 ,0 ,PROGRESS_BAX_MAX_WIDTH  ,y2 , SSD_COLOR_BLACK, true);
+    }break;
+
     case TextAnchor_NorthEast: {
-      SSD1306_DrawBox(DisplayHandle,x1 ,0 ,DisplayHandle->Width  ,y2 , SSD_COLOR_BLACK, true);
+      SSD1306_DrawBox(DisplayHandle,PROGRESS_BAX_MAX_WIDTH+1 ,0 ,DisplayHandle->Width-1  ,y2 , SSD_COLOR_BLACK, true);
     }
     break;
 
     case TextAnchor_SouthEast: {
-      SSD1306_DrawBox(DisplayHandle, x1, DisplayHandle->Height-y2 , DisplayHandle->Width , DisplayHandle->Height , SSD_COLOR_BLACK, true);
+      SSD1306_DrawBox(DisplayHandle, x1, DisplayHandle->Height-y2-1 , DisplayHandle->Width-1 , DisplayHandle->Height-1 , SSD_COLOR_BLACK, true);
 
     }
     break;
@@ -165,6 +245,8 @@ static void SetupDemo( struct SSD1306_Device* DisplayHandle, const struct SSD130
 static void SayHello( struct SSD1306_Device* DisplayHandle, const char* HelloText ) {
     SSD1306_FontDrawAnchoredString( DisplayHandle, TextAnchor_Center, HelloText, SSD_COLOR_WHITE );
     SSD1306_Update( DisplayHandle );
+
+    // SSD1306_Clear(DisplayHandle, SSD_COLOR_WHITE );
 }
 
 static void vidTestScreen(struct SSD1306_Device* DisplayHandle)
@@ -172,9 +254,28 @@ static void vidTestScreen(struct SSD1306_Device* DisplayHandle)
   static int i=0;
   i++;
   ESP_LOGI(TAG, "#### vidTestScreen() ####");
-  if(DisplayHandle!=NULL){
-    SSD1306_Clear(DisplayHandle, SSD_COLOR_BLACK );
-    SSD1306_DrawVLine(DisplayHandle,i%128,(i+1)%128,i%32, SSD_COLOR_WHITE);
-    SSD1306_Update( DisplayHandle );
-  }
+
+  ets_delay_us(TASK_DELAY);
+  ScreenMgr_vidPrintNetworkIP("255.255.255.255");
+  ets_delay_us(TASK_DELAY);
+  ScreenMgr_vidPrintHPHC(false);
+  ets_delay_us(TASK_DELAY);
+  ScreenMgr_vidPrintHPHC(true);
+  ets_delay_us(TASK_DELAY);
+  ScreenMgr_vidPrintNetworkStatus(false);
+  ets_delay_us(TASK_DELAY);
+  ScreenMgr_vidPrintNetworkStatus(true);
+  ets_delay_us(TASK_DELAY);
+  ScreenMgr_vidPrintNumber(-1);
+  ets_delay_us(TASK_DELAY);
+  ScreenMgr_vidPrintNumber(0);
+  ets_delay_us(TASK_DELAY);
+  ScreenMgr_vidPrintNumber(PROGRESS_BAX_MAX_VALUE/4);
+  ets_delay_us(TASK_DELAY);
+  ScreenMgr_vidPrintNumber(PROGRESS_BAX_MAX_VALUE/2);
+  ets_delay_us(TASK_DELAY);
+  ScreenMgr_vidPrintNumber(PROGRESS_BAX_MAX_VALUE);
+  ets_delay_us(TASK_DELAY);
+
+  SSD1306_Clear( DisplayHandle, SSD_COLOR_BLACK );
 }

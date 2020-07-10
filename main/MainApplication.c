@@ -39,14 +39,10 @@
 
 /*1s timeout*/
 #define MICROSEC_TO_SEC (1000000)
-#define u64TIMER_TIMEOUT_SECONDS 100/*(5*MICROSEC_TO_SEC)*/
+#define u64TIMER_TIMEOUT_SECONDS (5*MICROSEC_TO_SEC)
 
 //+20dBm
 #define MAX_TX_POWER (82)
-
-// #if (defined(USE_OLED_SCREEN)&& (USE_OLED_SCREEN==0))
-//   #define ScreenMgr_vidPrintNetworkStatus(fx) ((void)0)
-// #endif
 
 /****************** local type *****************/
 typedef enum
@@ -80,11 +76,14 @@ static const esp_timer_create_args_t periodic_timer_args = {
     };
 static esp_timer_handle_t periodic_timer;
 
+static char LOC_sIpAddr[16]="255.255.255.255";
+
 /****************** local functions definitions *****************/
 
 static void event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
 {
+
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
@@ -102,8 +101,10 @@ static void event_handler(void* arg, esp_event_base_t event_base,
       ScreenMgr_vidPrintNetworkStatus(true);
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-        ESP_LOGI(TAG, "got ip:%s",
-                 ip4addr_ntoa(&event->ip_info.ip));
+
+        sprintf(LOC_sIpAddr, "%s", ip4addr_ntoa(&event->ip_info.ip));
+        ESP_LOGI(TAG, "got ip:%s",LOC_sIpAddr);
+        ScreenMgr_vidPrintNetworkIP(LOC_sIpAddr);
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
@@ -153,6 +154,10 @@ void app_main(void)
 
   ESP_LOGI(TAG, "Free memory: %d bytes", esp_get_free_heap_size());
 
+  #if (defined(USE_OLED_SCREEN)&& (USE_OLED_SCREEN==1))
+  ScreenMgr_vidInit();
+  #endif
+
   ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
   wifi_init_sta();
 
@@ -163,11 +168,9 @@ void app_main(void)
   #if (defined(USE_MQTT_CLIENT)&& (USE_MQTT_CLIENT==1))
   MqttSub_vidInit();
   #endif
-  #if (defined(USE_OLED_SCREEN)&& (USE_OLED_SCREEN==1))
-  ScreenMgr_vidInit();
-  ScreenMgr_vidPrintNetworkStatus(false);
-  #endif
 
+  vTaskDelay(1);
+  
   /* Create the periodic timer */
   ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, &periodic_timer));
   /* Start the timer */
@@ -185,6 +188,8 @@ static void periodic_timer_callback(void* arg)
 {
   tsrtTicInfo_t strTicInfo;
   tstrMqttSub_TicTopicsValue strTicTopic;
+
+  memset(&strTicTopic, 0, sizeof(strTicTopic));
 
   // int64_t time_since_boot = esp_timer_get_time();
   // ESP_LOGI(TAG, "%lld - periodic_timer_callback()", time_since_boot);
@@ -228,6 +233,18 @@ static void periodic_timer_callback(void* arg)
 #endif
 
 #if (defined(USE_OLED_SCREEN)&& (USE_OLED_SCREEN==1))
-  ScreenMgr_vidTest();
+  // ScreenMgr_vidTest();
+  if(strTicInfo.bUpdatedVal){
+    ScreenMgr_vidPrintNumber(strTicTopic.PAPP);
+  }else{
+    ScreenMgr_vidPrintNumber(-1);
+  }
+  if(0 == strTicTopic.PTEC){
+    /*0 is HP*/
+    ScreenMgr_vidPrintHPHC(true);
+  }else{
+    ScreenMgr_vidPrintHPHC(false);
+  }
 #endif
+
 }

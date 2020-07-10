@@ -12,6 +12,7 @@
 
 
 /***************** LOCAL MACROS *****************/
+// #define DEBUG_MQTT_TOPIC
 
 /***************** LOCAL TYPES *****************/
 typedef enum
@@ -28,6 +29,12 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event);
 /***************** LOCAL VAR *****************/
 
 static const char *TAG = "[MqttSub]";
+
+#ifdef DEBUG_MQTT_TOPIC
+  static char *sMqttMainTopic = "AntoineHomeTest";
+#else
+  static char *sMqttMainTopic = "AntoineHome";
+#endif
 
 const esp_mqtt_client_config_t mqtt_cfg = {
     .uri = "mqtt://192.168.1.2",
@@ -52,8 +59,12 @@ void MqttSub_vidInit(void)
   vidInitLocalVar();
 
   LOC_strMqttClientHandle = esp_mqtt_client_init(&mqtt_cfg);
-  esp_mqtt_client_register_event(LOC_strMqttClientHandle, ESP_EVENT_ANY_ID, mqtt_event_handler, LOC_strMqttClientHandle);
+  esp_mqtt_set_config(LOC_strMqttClientHandle, &mqtt_cfg);
+}
 
+void MqttSub_vidReadyToConnect(void)
+{
+  ESP_LOGI(TAG, "## MqttSub_vidReadyToConnect");
   esp_mqtt_client_start(LOC_strMqttClientHandle);
 }
 
@@ -65,12 +76,13 @@ void MqttSub_vidTest(int IntputVal)
   esp_mqtt_client_reconnect(LOC_strMqttClientHandle);
 
   sprintf(acTxBuffer, "%d",IntputVal);
-  int msg_id = esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/IINST", acTxBuffer, expected_size, qos_test, 0);
+  int msg_id = esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHomeTest/TIC/IINST", acTxBuffer, expected_size, qos_test, 0);
 }
 
 void MqttSub_vidSetTicInfo(tstrMqttSub_TicTopicsValue *pstrTicInfo)
 {
   char acTxBuffer[10];
+  char acTopic[50];
   int msg_id=0;
 
   assert(pstrTicInfo!=NULL);
@@ -85,19 +97,29 @@ void MqttSub_vidSetTicInfo(tstrMqttSub_TicTopicsValue *pstrTicInfo)
   if(pstrTicInfo->error == enu_NoError)
   {
     sprintf(acTxBuffer, "%d",pstrTicInfo->HCHC);
-    msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/HCHC", acTxBuffer, expected_size, qos_test, 0);
+    sprintf(acTopic, "%s/TIC/HCHC",sMqttMainTopic);
+    msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, acTopic, acTxBuffer, expected_size, qos_test, 0);
+
     sprintf(acTxBuffer, "%d",pstrTicInfo->HCHP);
-    msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/HCHP", acTxBuffer, expected_size, qos_test, 0);
+    sprintf(acTopic, "%s/TIC/HCHP",sMqttMainTopic);
+    msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, acTopic, acTxBuffer, expected_size, qos_test, 0);
+
     sprintf(acTxBuffer, "%d",pstrTicInfo->IINST);
-    msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/IINST", acTxBuffer, expected_size, qos_test, 0);
+    sprintf(acTopic, "%s/TIC/IINST",sMqttMainTopic);
+    msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, acTopic, acTxBuffer, expected_size, qos_test, 0);
+
     sprintf(acTxBuffer, "%d",pstrTicInfo->PTEC);
-    msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/PTEC", acTxBuffer, expected_size, qos_test, 0);
+    sprintf(acTopic, "%s/TIC/PTEC",sMqttMainTopic);
+    msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, acTopic, acTxBuffer, expected_size, qos_test, 0);
+
     sprintf(acTxBuffer, "%d",pstrTicInfo->PAPP);
-    msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/PAPP", acTxBuffer, expected_size, qos_test, 0);
+    sprintf(acTopic, "%s/TIC/PAPP",sMqttMainTopic);
+    msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, acTopic, acTxBuffer, expected_size, qos_test, 0);
   }
   //in any case, always send error info
   sprintf(acTxBuffer, "%d",pstrTicInfo->error);
-  msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, "AntoineHome/TIC/error", acTxBuffer, expected_size, qos_test, 0);
+  sprintf(acTopic, "%s/TIC/error",sMqttMainTopic);
+  msg_id += esp_mqtt_client_publish(LOC_strMqttClientHandle, acTopic, acTxBuffer, expected_size, qos_test, 0);
 
   if(msg_id != 0)
   {
@@ -174,6 +196,9 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
           break;
       case MQTT_EVENT_ERROR:
           ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
+          break;
+      case MQTT_EVENT_BEFORE_CONNECT:
+          ESP_LOGI(TAG, "MQTT_EVENT_BEFORE_CONNECT");
           break;
       default:
           ESP_LOGI(TAG, "Other event id:%d", event->event_id);

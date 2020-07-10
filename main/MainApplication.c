@@ -107,6 +107,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         ScreenMgr_vidPrintNetworkIP(LOC_sIpAddr);
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+        MqttSub_vidReadyToConnect();
     }
 }
 
@@ -170,7 +171,7 @@ void app_main(void)
   #endif
 
   vTaskDelay(1);
-  
+
   /* Create the periodic timer */
   ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, &periodic_timer));
   /* Start the timer */

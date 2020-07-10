@@ -3,7 +3,7 @@
 
 
 #define USE_EMON_CMS (0)
-#define USE_MQTT_CLIENT (0)
+#define USE_MQTT_CLIENT (1)
 #define USE_OLED_SCREEN (1)
 
 #endif
